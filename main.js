@@ -30,10 +30,6 @@ const BN = require('bn.js');
 
 require('dotenv').config({ path: `.env.${process.env.NETWORK}` })
 
-// const secretKeyString = fs.readFileSync('./id.json', 'utf8');
-// const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-// const keypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
-
 console.log("...Token Info Input...")
 const amount = Number(prompt('amount(default: 10000): ')) || 10000;
 const decimals = Number(prompt('amount(default: 9): ')) || 9;
