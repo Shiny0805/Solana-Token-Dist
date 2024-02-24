@@ -79,12 +79,7 @@ async function main() {
     const addQuoteAmount = new BN(addQuoteAmountNumber * (10 ** 9)) // WSOL
 
     const startTime = Math.floor(Date.now() / 1000) + poolLockTime * 60 * 60
-    // const startTime = Math.floor(Date.now() / 1000) // start immediately
 
-    // console.log("wait 10 seconds for changes to apply...")
-    // await sleepTime(10000)
-
-    // check if minted token appeared in wallet
     let walletTokenAccounts;
     let found = false;
     while (!found) {
