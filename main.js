@@ -128,9 +128,6 @@ async function main() {
     readInterface.on('close', function () {
         // file read finished
 
-        // const baseToken = new Token(TOKEN_PROGRAM_ID, new PublicKey("D8VCsDwkTBMTAcsBLF9UZ8vYD4U7FvcJp1fMi9n9QqhE"), tokenInfo.decimals, tokenInfo.symbol, tokenInfo.tokenName)
-        // const quoteToken = DEFAULT_TOKEN.WSOL
-
         const inputToken = quoteToken // WSOL
         const outputToken = baseToken // custom token
         const inputTokenAmount = new TokenAmount(inputToken, swapAmountInSOL * 10 ** 9)
