@@ -1,0 +1,220 @@
+const { Connection, PublicKey, Keypair, Transaction, TransactionInstruction } = require("@solana/web3.js")
+const { Liquidity, Spl , findProgramAddress, SPL_ACCOUNT_LAYOUT, SPL_MINT_LAYOUT, TxVersion, LOOKUP_TABLE_CACHE} = require("@raydium-io/raydium-sdk")
+const fs = require("fs")
+const solanaWeb3 = require('@solana/web3.js')
+const {Market} = require("@openbook-dex/openbook")
+const spl = require("@solana/spl-token")
+const BN = require('bn.js');
+
+
+async function createPool() {
+
+    const connection = new Connection(solanaWeb3.clusterApiUrl("devnet"))
+
+    const secretKeyString = fs.readFileSync('./id.json', 'utf8')
+    const secretKey = Uint8Array.from(JSON.parse(secretKeyString))
+    const keypair = solanaWeb3.Keypair.fromSecretKey(secretKey)
+  
+    try {
+
+
+      const info = {
+
+        version : 4,
+        marketVersion : 3,
+        programId : new PublicKey("HWy1jotHpo6UqeQxx49dpYYdQB8wj9Qk9MdxwjLvDHB8"), 
+        openbookProgram : new PublicKey("EoTcMgcDRTJVZDMZWBoU6rhYHZfkNTVEAfz3uUJRcYGj")
+      }
+
+      const market = {
+        marketId: new PublicKey("GwRUNvH6dHCfc8pQPJsYNb3J4zm1qAcMEeP1ukKJP2kh"),
+        requestQueue: new PublicKey("DRqRib7knMFxNPvQXdSFxyCdaWoqFabgkLp6rHQCL7kF"),
+        eventQueue: new PublicKey("7hKUUYfKE9JpUAt9nqWHmreS3jiHi5v7dmnGNeuRPG1r"),
+        bids: new PublicKey("3oWtZzMBHeWiusxDfHfkbNwttt2f64JSEMevMhVppCQ1"),
+        asks: new PublicKey("2X9nzeFyoqa9gi9DLLBbr1t8Pi3otABEg26863o5mzC4"),
+        baseVault: new PublicKey("2WJxQziWWkMbxZQM5Leu7ebSNXBob7T7Pb5r8DjYH9TM"),
+        quoteVault: new PublicKey("7MmuNQzMHcdta6CkCtZ7DdcyjQHjmazspEkvjnWCq4hz"),
+        baseMint: new PublicKey("5ayatGeKbRa8YF7KiGUo14Ax6QW9MBeGFvt22EkcLeqd"),
+        quoteMint: new PublicKey("So11111111111111111111111111111111111111112")
+      }
+
+
+    const getMintData = async (mint) => {
+
+      return await connection.getAccountInfo(mint)
+    }
+
+    const getDecimals = (mintData) => {
+
+      return SPL_MINT_LAYOUT.decode(mintData.data).decimals
+
+    }
+    
+    const marketId = market.marketId
+
+    const baseMintData = await getMintData(market.baseMint)
+    const baseDecimals = getDecimals(baseMintData)
+
+    const quoteMintData = await getMintData(market.quoteMint)
+    const quoteDecimals = getDecimals(quoteMintData)
+      
+    
+    const baseMint = market.baseMint
+    const quoteMint = market.quoteMint
+    
+    const marketQuoteVault = market.quoteVault
+    const marketBaseVault = market.baseVault
+    const marketEventQueue = market.eventQueue
+    const marketBids = market.bids
+    const marketAsks = market.asks
+
+    const poolKeys = Liquidity.getAssociatedPoolKeys({
+
+      version : 4,
+      marketVersion : 3,
+      marketId : marketId,
+      baseMint : baseMint,
+      quoteMint : quoteMint,
+      baseDecimals : baseDecimals,
+      quoteDecimals : quoteDecimals,
+      programId : info.programId,
+      marketProgramId : info.openbookProgram
+
+    })
+
+
+    const authority = (findProgramAddress([Buffer.from([97,109,109,32,97,117,116,104,111,114,105,116,121])], info.programId))["publicKey"]
+
+    poolKeys.authority = authority
+    poolKeys.marketQuoteVault = marketQuoteVault
+    poolKeys.marketBaseVault = marketBaseVault
+    poolKeys.marketEventQueue = marketEventQueue
+    poolKeys.marketBids = marketBids
+    poolKeys.marketAsks = marketAsks
+
+    const ownerAccunts = await connection.getTokenAccountsByOwner(keypair.publicKey, {programId : spl.TOKEN_PROGRAM_ID})
+
+    let tokenAccounts = [] 
+
+    for(let i of ownerAccunts.value){
+
+      const data = SPL_ACCOUNT_LAYOUT.decode(i.account.data)
+      if(data.mint.toBase58() == poolKeys.baseMint.toBase58() || data.mint.toBase58() == poolKeys.quoteMint.toBase58()){
+
+        tokenAccounts.push(
+          {
+
+            pubkey: i.pubkey,
+            accountInfo: data,
+            programId : spl.TOKEN_PROGRAM_ID
+    
+          }
+        )
+      }
+    }
+
+    const baseAmountIn = new BN(1000 * 10 ** baseDecimals)
+    const quoteAmountIn = new BN(0.1 * 10 ** quoteDecimals)
+
+    const instruction = await Liquidity.makeCreatePoolV4InstructionV2Simple({
+
+        connection: Connection,
+        programId: info.programId,
+        marketInfo: {
+
+          marketId: market.marketId,
+          programId: info.openbookProgram
+        },
+
+        baseMintInfo: {
+
+            mint: baseMint,
+            decimals: baseDecimals
+        },
+
+        quoteMintInfo: {
+
+            mint: quoteMint,
+            decimals: quoteDecimals
+        },
+
+        baseAmount: baseAmountIn,
+        quoteAmount: quoteAmountIn,
+        startTime: new BN(1707261937),
+        ownerInfo: {
+          
+            feePayer: keypair.publicKey,
+            wallet: keypair.publicKey,
+            tokenAccounts: tokenAccounts,
+            useSOLBalance : false
+        },
+        associatedOnly: false,
+        checkCreateATAOwner: false,
+        makeTxVersion: TxVersion.V0,
+        lookupTableCache: LOOKUP_TABLE_CACHE,
+        feeDestinationId: new PublicKey("3XMrhbv989VxAMi3DErLV9eJht1pHppW5LbKxe9fkEFR")
+
+      })
+
+    
+    const {innerTransactions} = instruction
+
+    const transaction = new Transaction()
+
+    innerTransactions.forEach(inst => {
+
+      inst.instructions.forEach(i => {
+
+        transaction.add(i)
+
+      })
+    })
+
+    const latestBlockHash = await connection.getLatestBlockhash()
+
+    transaction.recentBlockhash = latestBlockHash.blockhash
+    transaction.lastValidBlockHeight = latestBlockHash.lastValidBlockHeight
+    transaction.feePayer = keypair.publicKey
+    transaction.sign(keypair)
+
+    try{
+
+      const signature = await connection.sendRawTransaction(transaction.serialize(), {skipPreflight : true, maxRetries : 5})
+
+      await connection.confirmTransaction({
+        blockhash: latestBlockHash.blockhash,
+        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+        signature
+      })
+  
+      console.log(`Transaction sent with signature: ${signature}`)
+
+    }catch(e){
+
+      console.log("Transaction failed",e)
+    }
+
+
+
+
+    } catch (error) {
+      
+      console.error("", error)
+    }
+
+}
+
+createPool()
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,26 @@
+{
+  "name": "token-dist",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "deploy-dev": "NETWORK=devnet node main.js",
+    "deploy-main": "NETWORK=mainnet node main.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@metaplex-foundation/mpl-token-metadata": "^2.5.2",
+    "@openbook-dex/openbook": "^0.0.9",
+    "@raydium-io/raydium-sdk": "^1.3.1-beta.47",
+    "@solana/spl-token": "^0.4.0",
+    "@solana/web3.js": "^1.89.1",
+    "bn.js": "^5.2.1",
+    "dotenv": "^16.4.1",
+    "fs": "^0.0.1-security",
+    "prompt-sync": "^4.2.0",
+    "readline": "^1.3.0"
+  }
+}

@@ -1,0 +1,204 @@
+const { Connection, PublicKey, Keypair, Transaction, TransactionInstruction } = require("@solana/web3.js")
+const { Liquidity, Spl , findProgramAddress, SPL_ACCOUNT_LAYOUT, SPL_MINT_LAYOUT, TxVersion, LOOKUP_TABLE_CACHE, TokenAmount, Token} = require("@raydium-io/raydium-sdk")
+const fs = require("fs")
+const solanaWeb3 = require('@solana/web3.js')
+const {Market} = require("@openbook-dex/openbook")
+const spl = require("@solana/spl-token")
+const BN = require('bn.js');
+
+
+async function removeLiquidity() {
+
+    const connection = new Connection(solanaWeb3.clusterApiUrl("devnet"))
+
+    const secretKeyString = fs.readFileSync('./id.json', 'utf8')
+    const secretKey = Uint8Array.from(JSON.parse(secretKeyString))
+    const keypair = solanaWeb3.Keypair.fromSecretKey(secretKey)
+  
+    try {
+
+
+      const info = {
+
+        version : 4,
+        marketVersion : 3,
+        programId : new PublicKey("HWy1jotHpo6UqeQxx49dpYYdQB8wj9Qk9MdxwjLvDHB8"), 
+        openbookProgram : new PublicKey("EoTcMgcDRTJVZDMZWBoU6rhYHZfkNTVEAfz3uUJRcYGj")
+      }
+
+      const market = {
+
+        
+        marketId: new PublicKey("4QQwdy1ukoVDoEBB1RaxFTks74XY2CaQwhWcaTdLBXB7"),
+        requestQueue: new PublicKey("ERfvKKKPnv5dLuXbLe8pjG51mSZY9As2MdFJJfE4ARyX"),
+        eventQueue: new PublicKey("FBvVD2sPjftxeH12DhF4mnrdQ3Dpz27z9hEhKFopv2MG"),
+        bids: new PublicKey("347j1ErwhXBXTBC71o3VRksVjvzSkY3cu9k3ZufgiKF8"),
+        asks: new PublicKey("8dTKpFRyaR5FVEUgt56P9iAoyY2GPhwGvqEcGBbXBWvr"),
+        baseVault: new PublicKey("72KtRksMKvpRpeaCL7qPr9tUeUMs4m88e2M8dpVrLcei"),
+        quoteVault: new PublicKey("HhzgtpvDLhW7excN3UWVFgnKkRndhZcyyXTH5DhRKz5N"),
+        baseMint: new PublicKey("6Y41EBkSV988rDTRUj9RpANoUn4fM8UVPjn9754ZYkk9"),
+        quoteMint: new PublicKey("So11111111111111111111111111111111111111112")
+        
+    }
+
+
+    const getMintData = async (mint) => {
+
+      return await connection.getAccountInfo(mint)
+    }
+
+    const getDecimals = (mintData) => {
+
+      return SPL_MINT_LAYOUT.decode(mintData.data).decimals
+
+    }
+    
+    const marketId = market.marketId
+    
+    const baseMint = market.baseMint
+    const quoteMint = market.quoteMint
+    
+    const marketQuoteVault = market.quoteVault
+    const marketBaseVault = market.baseVault
+    const marketEventQueue = market.eventQueue
+    const marketBids = market.bids
+    const marketAsks = market.asks
+
+    const baseMintData = await getMintData(market.baseMint)
+    const baseDecimals = getDecimals(baseMintData)
+
+    const quoteMintData = await getMintData(market.quoteMint)
+    const quoteDecimals = getDecimals(quoteMintData)
+
+    const poolKeys = Liquidity.getAssociatedPoolKeys({
+
+      version : 4,
+      marketVersion : 3,
+      marketId : marketId,
+      baseMint : baseMint,
+      quoteMint : quoteMint,
+      baseDecimals : baseDecimals,
+      quoteDecimals : quoteDecimals,
+      programId : info.programId,
+      marketProgramId : info.openbookProgram
+
+    })
+
+    console.log(poolKeys.lpMint,"lpMint")
+    
+    const lpMintData = await getMintData(poolKeys.lpMint)
+    const lpDecimals = getDecimals(lpMintData)
+
+    const authority = (findProgramAddress([Buffer.from([97,109,109,32,97,117,116,104,111,114,105,116,121])], info.programId))["publicKey"]
+
+    poolKeys.authority = authority
+    poolKeys.marketQuoteVault = marketQuoteVault
+    poolKeys.marketBaseVault = marketBaseVault
+    poolKeys.marketEventQueue = marketEventQueue
+    poolKeys.marketBids = marketBids
+    poolKeys.marketAsks = marketAsks
+
+
+    const ownerAccunts = await connection.getTokenAccountsByOwner(keypair.publicKey, {programId : spl.TOKEN_PROGRAM_ID})
+
+    let tokenAccounts = [] 
+
+    for(let i of ownerAccunts.value){
+
+      const data = SPL_ACCOUNT_LAYOUT.decode(i.account.data)
+      if(data.mint.toBase58() == poolKeys.baseMint.toBase58() || data.mint.toBase58() == poolKeys.quoteMint.toBase58() || data.mint.toBase58() == poolKeys.lpMint.toBase58()){
+
+        tokenAccounts.push(
+          {
+
+            pubkey: i.pubkey,
+            accountInfo: data,
+            programId : spl.TOKEN_PROGRAM_ID
+    
+          }
+        )
+      }
+    }
+
+    const amount = new TokenAmount(new Token(poolKeys.programId,poolKeys.lpMint, lpDecimals), 0.5 * 10 ** lpDecimals)
+
+
+    const instruction = await Liquidity.makeRemoveLiquidityInstructionSimple({
+
+        connection: connection,
+        
+        poolKeys : poolKeys,
+        userKeys: {
+          
+            payer: keypair.publicKey,
+            owner: keypair.publicKey,
+            tokenAccounts: tokenAccounts,
+        },
+        amountIn : amount,
+        makeTxVersion: TxVersion.V0,
+        lookupTableCache: LOOKUP_TABLE_CACHE
+        
+    })
+
+    
+    const {innerTransactions} = instruction
+
+    const transaction = new Transaction()
+
+    innerTransactions.forEach(inst => {
+
+      inst.instructions.forEach(i => {
+
+        transaction.add(i)
+
+      })
+    })
+
+    const latestBlockHash = await connection.getLatestBlockhash()
+
+    transaction.recentBlockhash = latestBlockHash.blockhash
+    transaction.lastValidBlockHeight = latestBlockHash.lastValidBlockHeight
+    transaction.feePayer = keypair.publicKey
+    transaction.sign(keypair)
+
+    try{
+
+      const signature = await connection.sendRawTransaction(transaction.serialize())
+
+      await connection.confirmTransaction({
+        blockhash: latestBlockHash.blockhash,
+        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+        signature
+      })
+  
+      console.log(`Transaction sent with signature: ${signature}`)
+
+    }catch(e){
+
+      console.log("Transaction failed",e)
+    }
+
+
+
+
+    } catch (error) {
+      
+      console.error("", error)
+    }
+
+}
+
+removeLiquidity()
+
+
+
+
+
+
+
+
+
+
+
+
+
